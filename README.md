@@ -33,7 +33,7 @@ Matplotlib.
 Python 3.9 or later is required.
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Chemosens/digimouth.git
 cd digimouth
 pip install -e .            # the library and its dependencies
 pip install -e ".[dev]"     # + pytest, to run the tests
@@ -90,8 +90,10 @@ The [`examples/`](examples/README.md) folder contains two kinds of scripts:
   needed);
 - `digimouth_*.py` reproduce the results of the Digimouth study, on the published dataset.
 
-The experimental data are **not included** in this repository. They are published
-separately:
+A small in vitro data file (isoamyl acetate release, three repetitions, 230 KB) is included
+in [`examples/data/`](examples/data/README.md).
+
+The in vivo data are **not included** in this repository. They are published separately:
 
 > Peltier, Caroline (2026). *Dataset of aroma release in vivo (Digimouth)*, version 1.0.
 > Recherche Data Gouv. <https://doi.org/10.57745/OVC3RL> — licence Etalab 2.0.
