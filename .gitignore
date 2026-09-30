@@ -1,0 +1,10 @@
+# Résultats produits par les exemples
+examples/output/
+
+# Fichiers générés par Python et par pip install -e .
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+build/
+dist/
