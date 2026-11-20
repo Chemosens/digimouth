@@ -114,7 +114,7 @@ stages_2 = [{ "t_start": 0,   "t_end": 30,   "model": model_diffusion_invitro_k1
 
 res=dm.run_stages(stages, y0_dict=y0_dict, df_event=df_event,event_func_dict= model_diffusion_invitro_k1.event_funcs, event_params=None)
 #gmet.plot_xy(res["time"],res["CMS"])
-gmet.plot_xy(res["time"],res["Cg"],vertical_lines=[50,100],title="Impact of events and stages on aroma release on $C_g$",x_label="Time (s)",y_label="Concentration (g/m3)")
+gmet.plot_xy(res["time"],res["Cg"],vertical_lines=[50,100],title="Impact of events and stages on aroma release on $C_g$",x_label="Time (s)",y_label="Concentration (g/m3)",legend=False)
 #gmet.plot_xy(res["time"],res["CMS"],vertical_lines=[10,15,20],title="Impact of events and stages on aroma release on $C_{MS}$",x_label="Time (s)",y_label="Concentration (g/m3)")
 #res_2=dm.run_stages(stages_2, y0_dict=y0_dict, df_event=df_event,event_func_dict= model_diffusion_invitro_k1.event_funcs, event_params=None)
 #gmet.plot_xy(res_2["time"],res_2["Cg"],vertical_lines=[10,15,20],title="Impact of events and stages on aroma release on $C_g$",x_label="Time (s)",y_label="Concentration (g/m3)")

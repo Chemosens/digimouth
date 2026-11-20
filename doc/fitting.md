@@ -98,6 +98,10 @@ y0_dependencies = {"Cg": lambda params, y0: params["Cg"]["Kaw"] * y0["Cl"]}
 `bootstrap_params(...)` can also be called directly; it returns the bootstrap samples, their
 standard deviation and percentile intervals.
 
+Both methods treat the residuals as independent. Along a kinetic curve they are usually
+autocorrelated, so the intervals are generally too narrow: read them as a lower bound on the
+uncertainty (see [known_issues.md](known_issues.md#limitations)).
+
 ## Several experiments at once
 
 `optim_param_dynamic_multi` accepts **lists** of time and intensity arrays, one per
@@ -192,5 +196,6 @@ ready for `run_stages`), `success` and `message`.
 Normalisation is the same as in `calculate_residuals`. Without events and with a single
 stage, `optim_param_protocol` gives the same result as `optim_param_dynamic` (this is tested).
 
-The older `optim_param_dynamic_multiphases` does not work with the current stage format and
-is deprecated: use `optim_param_protocol`.
+A complete example (two stages with a different `k`, plus an opening event, fitted on
+synthetic data with known parameters) is
+[examples/digimouth_optim_protocol_in_vitro.py](../examples/digimouth_optim_protocol_in_vitro.py).

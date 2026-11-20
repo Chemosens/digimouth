@@ -48,7 +48,6 @@ from .optimization import (
     # Low-level functions
     calculate_residuals,
     calculate_residuals_multi,
-    calculate_residuals_multiphases,
     bootstrap_params,
     grid_search_initial_guess,
     optim_param_protocol,
@@ -88,7 +87,6 @@ __all__ = [
     "optim_param_dynamic_multi",
     "calculate_residuals",
     "calculate_residuals_multi",
-    "calculate_residuals_multiphases",
     "bootstrap_params",
     "grid_search_initial_guess",
     "optim_param_protocol",

@@ -259,24 +259,6 @@ res_opt_from_grid["rmse"]
 
 
 #==============================================
-# Testing multiphase residual function # TODO
-#==============================================
-residuals = opt.calculate_residuals_multiphases(
-    params_vector=initial_param_keys,
-    time_exp=time_exp,
-    intensity_exp=intensity_exp,
-    stages=[{
-        "t_start": 0,
-        "t_end": 100,
-        "model":model_diff
-    }],
-    y0_initial=y0_dict,
-    param_keys=param_keys_to_optimize_release,
-    output_key="CMS",
-    normalization=True
-)
-
-#==============================================
 # Testing with dipending initial conditions on parameters
 #==============================================
 Kaw_initial_ic=5e-7

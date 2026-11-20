@@ -134,6 +134,7 @@ if number_param_to_optimize==3:
                                         y0_dependencies=y0_dep
                                         )
 
+
 if number_param_to_optimize==2:
     res_opt_release_1=opt.optim_param_dynamic_multi(time_exp=time_exp_selected, intensity_exp=intensity_exp_selected,
                                             y0_dict=y0_dict_release, 
@@ -144,6 +145,10 @@ if number_param_to_optimize==2:
                                             method='trf', output_key="CMS",
                                             y0_dependencies=None
                                             )
+
+residuals_1= opt.calculate_residuals(res_opt_release_1["opt_param"], time_exp_selected,
+                            intensity_exp_selected, y0_dict_release, res, ["k", "tMS"])
+np.sqrt((residuals_1**2).mean())
 
 rmse1=res_opt_release_1["rmse"]
 res_opt_release_1['opt_params_dict']
@@ -331,5 +336,26 @@ plt.tight_layout()
 plt.show()
 
 
+# --- Statistiques sur les 3 répétitions (réponse au reviewer)
+fits = {"expe_1": res_opt_release_1, "expe_2": res_opt_release_2, "expe_3": res_opt_release_3}
+if number_param_to_optimize == 3:
+    keys, dep = ["Kaw", "k", "tMS"], y0_dep
+else:
+    keys, dep = ["k", "tMS"], None
+
+rows = []
+for name, fit in fits.items():
+    r = opt.calculate_residuals(fit["opt_param"], x_dict[name], y_dict[name],
+                                y0_dict_release, res, keys, y0_dependencies=dep)
+    rows.append({"run": name, "n_points": r.size,
+                 "rmse": np.sqrt(np.mean(r**2)),   # identique à fit["rmse"]
+                 "bias": r.mean(),                  # moyenne des résidus
+                 "max_abs": np.abs(r).max()})
+
+stats_runs = pd.DataFrame(rows)
+print(stats_runs)
+
+rmse_reps = stats_runs["rmse"].to_numpy()
+rmse_reps.var(ddof=1)
 
 
