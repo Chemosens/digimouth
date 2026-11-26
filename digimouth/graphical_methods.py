@@ -231,7 +231,7 @@ def plot_grid(
     axes = np.atleast_1d(axes).flatten()
     for idx, (xi, yi) in enumerate(zip(x_list, y_list)):
         ax = axes[idx]
-        fig_i, _ = plot_xy(xi, yi, ax=ax, **plot_kwargs)
+        fig_i, _ = plot_xy(xi, yi, ax=ax, **{"new": False, **plot_kwargs})
         if titles is not None and idx < len(titles):
             ax.set_title(titles[idx])
     # hide any unused axes

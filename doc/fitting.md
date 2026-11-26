@@ -96,11 +96,24 @@ y0_dependencies = {"Cg": lambda params, y0: params["Cg"]["Kaw"] * y0["Cl"]}
   `boot_random_state` fixes the random seed for reproducibility.
 
 `bootstrap_params(...)` can also be called directly; it returns the bootstrap samples, their
-standard deviation and percentile intervals.
+standard deviation and percentile intervals. Each bootstrap curve is the fitted curve plus an
+artificial noise built from the residuals (on the normalised scale when `normalization=True`),
+fitted again. The noise is built according to `resampling`:
 
-Both methods treat the residuals as independent. Along a kinetic curve they are usually
-autocorrelated, so the intervals are generally too narrow: read them as a lower bound on the
-uncertainty (see [known_issues.md](known_issues.md#limitations)).
+| `resampling` | Noise | Assumption |
+|---|---|---|
+| `"iid"` (default) | residuals drawn one by one | independent residuals |
+| `"block"` | moving block bootstrap: blocks of `block_length` consecutive residuals (default `round(n ** (1/3))`) | correlation shorter than a block |
+| `"ar1"` | parametric: Gaussian AR(1) noise with the standard deviation and lag-1 autocorrelation of the residuals | AR(1) correlation, equally spaced times |
+
+Along a kinetic curve (PTR-MS for instance) the residuals are usually autocorrelated. The
+Jacobian intervals (`ci_method="t"`) and the `"iid"` bootstrap then treat the time points as
+independent and give intervals that are too narrow; use `"ar1"` or `"block"`, and check that
+the result changes little with the block length. The result also contains `rho`, the lag-1
+autocorrelation of the residuals. See
+[examples/digimouth_optim_in_vitro_uncertainty.py](../examples/digimouth_optim_in_vitro_uncertainty.py).
+
+`ci_method="bootstrap"` in `optim_param_dynamic` uses the `"iid"` resampling.
 
 ## Several experiments at once
 

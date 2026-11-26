@@ -152,14 +152,54 @@ def calculate_residuals_multi(params_vector, time_exp, intensity_exp, y0_dict, m
                                 save_path=save_path, ode_solver=ode_solver, ode_method=ode_method, solve_ivp_options=solve_ivp_options)
         return residuals
 
+def _bootstrap_noise(resid, rng, resampling, block_length, rho):
+    """One artificial noise series with the same length as `resid` (centred residuals)."""
+    n = resid.size
+    if resampling == "iid":
+        return rng.choice(resid, size=n, replace=True)
+    if resampling == "block":
+        # moving block bootstrap (Kunsch, 1989): blocks of consecutive residuals, drawn with
+        # replacement and laid end to end, keep the correlation within each block
+        n_blocks = int(np.ceil(n / block_length))
+        starts = rng.integers(0, n - block_length + 1, size=n_blocks)
+        return np.concatenate([resid[s:s + block_length] for s in starts])[:n]
+    if resampling == "ar1":
+        # parametric bootstrap: Gaussian AR(1) noise e_t = rho e_(t-1) + u_t, with the
+        # standard deviation and lag-1 autocorrelation of the residuals
+        sd = np.std(resid, ddof=1)
+        innovations = rng.normal(0.0, sd * np.sqrt(1.0 - rho ** 2), size=n)
+        noise = np.empty(n)
+        noise[0] = rng.normal(0.0, sd)
+        for i in range(1, n):
+            noise[i] = rho * noise[i - 1] + innovations[i]
+        return noise
+    raise ValueError(f"resampling must be 'iid', 'block' or 'ar1', got '{resampling}'")
+
+
 def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
                      param_keys_to_optimize, initial_params_to_optimize=None,
                      bounds=None, method='trf', output_key="CMS",
                      normalization=True, initial_conditions_depending_on_params=False,
                      y0_dependencies=None, n_boot=1000, conf_level=0.95, random_state=None,
-                     ode_solver="odeint", ode_method="LSODA", solve_ivp_options=None):
+                     ode_solver="odeint", ode_method="LSODA", solve_ivp_options=None,
+                     resampling="iid", block_length=None):
     """
-    Estimate parameter uncertainty via residual bootstrap.
+    Estimate parameter uncertainty by bootstrap on the residuals of one fitted curve.
+
+    The curve is fitted once; each bootstrap curve is then the fitted curve plus an artificial
+    noise built from the residuals, and is fitted again. The spread of the refitted
+    parameters gives the uncertainty. With `normalization=True`, everything is done on the
+    normalised scale used by the fit.
+
+    Three ways of building the artificial noise (`resampling`):
+
+    - "iid": residuals drawn one by one with replacement. Assumes independent residuals;
+      too optimistic when they are correlated in time.
+    - "block": moving block bootstrap (Kunsch, 1989): blocks of `block_length` consecutive
+      residuals are drawn with replacement and laid end to end, which keeps the correlation
+      within each block. No assumption on the form of the correlation.
+    - "ar1": parametric bootstrap: Gaussian first-order autoregressive noise with the standard
+      deviation and the lag-1 autocorrelation of the residuals. Assumes equally spaced times.
 
     Parameters
     ----------
@@ -176,9 +216,9 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
     output_key : str
         variable key to compare with experiments (default "CMS").
     normalization : bool
-        whether to normalize simulation to data max before computing residuals.
+        whether simulation and data are each divided by their maximum (as in the fit).
     initial_conditions_depending_on_params : bool
-        if True, update y0 based on parameter values (legacy support).
+        unused, kept for backward compatibility.
     y0_dependencies : dict, optional
         Maps y0 variable names to callable functions for parameterized initial conditions.
     n_boot : int
@@ -187,6 +227,11 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
         confidence level for returned intervals (e.g. 0.95).
     random_state : int or np.random.Generator or None
         seed or generator for reproducibility.
+    resampling : str
+        "iid" (default), "block" or "ar1", see above.
+    block_length : int or None
+        number of consecutive points per block for resampling="block".
+        Default: round(n ** (1/3)), at least 2.
 
     Returns
     -------
@@ -195,12 +240,14 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
             bootstrapped parameter vectors.
         stderr_boot : np.ndarray, shape (n_params,)
             standard deviation of the bootstrap samples.
-        conf_intervals_boot : np.ndarray, shape (n_params,2)
+        conf_intervals_boot : dict {name: (low, high)}
             percentile-based confidence intervals.
         original_fit : dict
             dictionary returned by :func:`optim_param_dynamic` for the original data.
+        resampling, block_length, rho, n_failed :
+            method used, block length (block only), lag-1 autocorrelation of the residuals,
+            number of bootstrap fits that failed.
     """
-    # run initial optimization to obtain residuals and starting point
     if initial_params_to_optimize is None:
         initial_params_to_optimize = []
     orig = optim_param_dynamic(time_exp, intensity_exp, y0_dict, model,
@@ -215,17 +262,32 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
     if orig.get("opt_param") is None:
         raise RuntimeError("initial optimization failed, cannot bootstrap")
     opt_param = orig["opt_param"]
-    # compute residual vector on original data
-    resid = calculate_residuals(opt_param, time_exp, intensity_exp,
-                                 y0_dict, model,
-                                 param_keys_to_optimize,
-                                 param_sharing=None,
-                                 output_key=output_key,
-                                 normalization=normalization,
-                                 y0_dependencies=y0_dependencies,
-                                 ode_solver=ode_solver, ode_method=ode_method,
-                                 solve_ivp_options=solve_ivp_options)
-    resid = np.asarray(resid)
+    intensity_exp = np.asarray(intensity_exp, dtype=float)
+    # residuals = fitted - data, on the scale used by the fit
+    resid = np.asarray(calculate_residuals(opt_param, time_exp, intensity_exp,
+                                           y0_dict, model,
+                                           param_keys_to_optimize,
+                                           param_sharing=None,
+                                           output_key=output_key,
+                                           normalization=normalization,
+                                           y0_dependencies=y0_dependencies,
+                                           ode_solver=ode_solver, ode_method=ode_method,
+                                           solve_ivp_options=solve_ivp_options), dtype=float)
+    data_scaled = intensity_exp / np.max(intensity_exp) if normalization else intensity_exp
+    fitted = data_scaled + resid
+    resid = resid - resid.mean()
+    n = resid.size
+    rho = float(np.corrcoef(resid[:-1], resid[1:])[0, 1]) if n > 2 else 0.0
+    if resampling == "block":
+        if block_length is None:
+            block_length = max(2, int(round(n ** (1 / 3))))
+        block_length = int(block_length)
+        if not 1 <= block_length <= n:
+            raise ValueError(f"block_length must be between 1 and {n}, got {block_length}")
+    elif resampling not in ("iid", "ar1"):
+        raise ValueError(f"resampling must be 'iid', 'block' or 'ar1', got '{resampling}'")
+    if resampling == "ar1" and not -1 < rho < 1:
+        raise ValueError(f"lag-1 autocorrelation of the residuals out of (-1, 1): {rho}")
     # prepare random generator
     if random_state is None:
         rng = np.random.default_rng()
@@ -234,16 +296,15 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
     else:
         rng = np.random.default_rng(random_state)
     samples = []
+    n_failed = 0
     lower, upper = None, None
     if bounds is not None:
         lower = np.asarray(bounds[0], dtype=float)
         upper = np.asarray(bounds[1], dtype=float)
     # resampling loop
-    for i in range(n_boot):
-        # draw residuals with replacement
-        boot_resid = rng.choice(resid, size=resid.shape, replace=True)
-        # new artificial data
-        intensity_boot = intensity_exp + boot_resid
+    for _ in range(n_boot):
+        # artificial data = fitted curve + artificial noise (residuals are fitted - data)
+        intensity_boot = fitted - _bootstrap_noise(resid, rng, resampling, block_length, rho)
         try:
             result = least_squares(
                 calculate_residuals,
@@ -267,8 +328,10 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
             )
             if result.success:
                 samples.append(result.x.copy())
+            else:
+                n_failed += 1
         except Exception:
-            # ignore failure and continue
+            n_failed += 1
             continue
     samples = np.vstack(samples) if samples else np.zeros((0, len(opt_param)))
     stderr_boot = np.std(samples, axis=0, ddof=1) if samples.size else None
@@ -276,7 +339,6 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
         alpha = (1.0 - conf_level) / 2.0
         lower_ci = np.percentile(samples, 100 * alpha, axis=0)
         upper_ci = np.percentile(samples, 100 * (1 - alpha), axis=0)
-        #conf_intervals_boot = np.vstack((lower_ci, upper_ci)).T
         conf_intervals_boot = {
             key: (low, high)
             for key, low, high in zip(param_keys_to_optimize, lower_ci, upper_ci)
@@ -287,8 +349,13 @@ def bootstrap_params(time_exp, intensity_exp, y0_dict, model,
         'samples': samples,
         'stderr_boot': stderr_boot,
         'conf_intervals_boot': conf_intervals_boot,
-        'original_fit': orig
+        'original_fit': orig,
+        'resampling': resampling,
+        'block_length': block_length if resampling == "block" else None,
+        'rho': rho,
+        'n_failed': n_failed,
     }
+
 
 def grid_search_initial_guess(param_grids,  kwargs):
     """
